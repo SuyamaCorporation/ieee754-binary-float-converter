@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>IEEE754浮動小数点2進/16進数コンバーター</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  .bit-sign   { background:#7f1d1d; color:#fca5a5; }
+  .bit-exp32  { background:#1e3a5f; color:#93c5fd; }
+  .bit-exp64  { background:#1e3a5f; color:#93c5fd; }
+  .bit-mant   { background:#14532d; color:#86efac; }
+  .bit-cell { display:inline-block; font-family:monospace; font-size:11px;
+              width:16px; text-align:center; line-height:20px;
+              border-radius:2px; margin:1px; cursor:default; }
+  .bit-cell:hover { filter: brightness(1.4); }
+  .bit-sep { display:inline-block; width:4px; }
+</style>
+</head>
+<body class="bg-gray-950 text-gray-100 min-h-screen p-4">
+<div class="max-w-5xl mx-auto">
+  <h1 class="text-2xl font-bold text-center mb-2 text-yellow-400">IEEE 754 浮動小数点 2進/16進数コンバーター</h1>
+  <p class="text-center text-gray-400 text-sm mb-5">32bit / 64bit 浮動小数点を符号・指数部・仮数部に分解して可視化</p>
+
+  <!-- 入力セクション -->
+  <div class="bg-gray-900 rounded-xl p-5 mb-5 border border-gray-700">
+    <div class="flex gap-3 mb-3 flex-wrap items-center">
+      <span class="text-gray-400 text-sm font-semibold">入力形式:</span>
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="inputType" value="decimal" checked class="accent-yellow-500"> <span class="text-sm">10進数</span>
+      </label>
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="inputType" value="hex32"> <span class="text-sm">HEX (32bit)</span>
+      </label>
+      <label class="flex items-center gap-1 cursor-pointer">
+        <input type="radio" name="inputType" value="hex64"> <span class="text-sm">HEX (64bit)</span>
+      </label>
+    </div>
+    <div class="flex gap-3 flex-wrap">
+      <input id="mainInput" type="text" placeholder="例: 3.14, -0.1, 1e10, Infinity, NaN"
+        class="flex-1 bg-gray-800 border border-gray-600 rounded-lg px-4 py-2 text-lg font-mono text-yellow-200 focus:outline-none focus:border-yellow-500">
+      <div class="flex gap-2 flex-wrap">
+        <button onclick="setVal('3.14159')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">π≒3.14159</button>
+        <button onclick="setVal('0.1')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">0.1</button>
+        <button onclick="setVal('0')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">0</button>
+        <button onclick="setVal('-0')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">-0</button>
+        <button onclick="setVal('Infinity')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">+Inf</button>
+        <button onclick="setVal('-Infinity')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">-Inf</button>
+        <button onclick="setVal('NaN')" class="text-xs bg-gray-700 hover:bg-gray-600 px-2 py-1 rounded transition">NaN</button>
+        <button onclick="setVal('1.17549435e-38')" class="text-xs bg-indigo-900 hover:bg-indigo-800 px-2 py-1 rounded transition">最小非正規</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 32bit -->
+  <div class="bg-gray-900 rounded-xl p-5 mb-4 border border-orange-900">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-orange-400 font-bold">32bit 単精度 (float)</h2>
+      <div id="special32" class="text-xs font-bold px-2 py-0.5 rounded hidden"></div>
+    </div>
+    <div id="bits32" class="mb-3 overflow-x-auto whitespace-nowrap pb-1"></div>
+    <div class="grid grid-cols-3 gap-2 text-sm mb-3">
+      <div class="bg-red-950 border border-red-800 rounded p-2">
+        <div class="text-xs text-red-400 font-semibold mb-1">符号ビット [31]</div>
+        <div id="sign32" class="font-mono text-lg text-red-200"></div>
+        <div id="signMeaning32" class="text-xs text-gray-400"></div>
+      </div>
+      <div class="bg-blue-950 border border-blue-800 rounded p-2">
+        <div class="text-xs text-blue-400 font-semibold mb-1">指数部 [30:23] (8bit)</div>
+        <div id="exp32" class="font-mono text-sm text-blue-200 break-all"></div>
+        <div id="expVal32" class="text-xs text-gray-400"></div>
+      </div>
+      <div class="bg-green-950 border border-green-800 rounded p-2">
+        <div class="text-xs text-green-400 font-semibold mb-1">仮数部 [22:0] (23bit)</div>
+        <div id="mant32" class="font-mono text-xs text-green-200 break-all"></div>
+        <div id="mantVal32" class="text-xs text-gray-400"></div>
+      </div>
+    </div>
+    <div class="bg-gray-800 rounded p-2 flex flex-wrap gap-4 text-xs">
+      <span class="text-gray-400">HEX: <span id="hex32" class="text-yellow-300 font-mono"></span></span>
+      <span class="text-gray-400">10進: <span id="dec32" class="text-yellow-200 font-mono"></span></span>
+      <span class="text-gray-400">精度: <span class="text-gray-300">約7桁</span></span>
+    </div>
+  </div>
+
+  <!-- 64bit -->
+  <div class="bg-gray-900 rounded-xl p-5 border border-blue-900">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-blue-400 font-bold">64bit 倍精度 (double)</h2>
+      <div id="special64" class="text-xs font-bold px-2 py-0.5 rounded hidden"></div>
+    </div>
+    <div id="bits64" class="mb-3 overflow-x-auto whitespace-nowrap pb-1"></div>
+    <div class="grid grid-cols-3 gap-2 text-sm mb-3">
+      <div class="bg-red-950 border border-red-800 rounded p-2">
+        <div class="text-xs text-red-400 font-semibold mb-1">符号ビット [63]</div>
+        <div id="sign64" class="font-mono text-lg text-red-200"></div>
+        <div id="signMeaning64" class="text-xs text-gray-400"></div>
+      </div>
+      <div class="bg-blue-950 border border-blue-800 rounded p-2">
+        <div class="text-xs text-blue-400 font-semibold mb-1">指数部 [62:52] (11bit)</div>
+        <div id="exp64" class="font-mono text-sm text-blue-200 break-all"></div>
+        <div id="expVal64" class="text-xs text-gray-400"></div>
+      </div>
+      <div class="bg-green-950 border border-green-800 rounded p-2">
+        <div class="text-xs text-green-400 font-semibold mb-1">仮数部 [51:0] (52bit)</div>
+        <div id="mant64" class="font-mono text-xs text-green-200 break-all leading-5"></div>
+        <div id="mantVal64" class="text-xs text-gray-400"></div>
+      </div>
+    </div>
+    <div class="bg-gray-800 rounded p-2 flex flex-wrap gap-4 text-xs">
+      <span class="text-gray-400">HEX: <span id="hex64" class="text-yellow-300 font-mono"></span></span>
+      <span class="text-gray-400">10進: <span id="dec64" class="text-yellow-200 font-mono"></span></span>
+      <span class="text-gray-400">精度: <span class="text-gray-300">約15〜17桁</span></span>
+    </div>
+  </div>
+
+  <!-- 凡例 -->
+  <div class="mt-3 flex gap-4 text-xs text-gray-500 justify-center flex-wrap">
+    <span class="flex items-center gap-1"><span class="inline-block w-4 h-4 bit-sign rounded"></span> 符号</span>
+    <span class="flex items-center gap-1"><span class="inline-block w-4 h-4 bit-exp32 rounded"></span> 指数部</span>
+    <span class="flex items-center gap-1"><span class="inline-block w-4 h-4 bit-mant rounded"></span> 仮数部</span>
+  </div>
+</div>
+
+<script>
+const buf = new ArrayBuffer(8);
+const view = new DataView(buf);
+
+function setVal(v) {
+  document.getElementById('mainInput').value = v;
+  convert();
+}
+
+function getInputType() {
+  return document.querySelector('input[name="inputType"]:checked').value;
+}
+
+function convert() {
+  const raw = document.getElementById('mainInput').value.trim();
+  const type = getInputType();
+  let val;
+
+  if (type === 'decimal') {
+    if (raw === '' ) return;
+    if (raw === 'NaN' || raw.toLowerCase() === 'nan') val = NaN;
+    else if (raw === 'Infinity' || raw === '+Infinity') val = Infinity;
+    else if (raw === '-Infinity') val = -Infinity;
+    else { val = parseFloat(raw); if (isNaN(val) && raw !== 'NaN') { showError(); return; } }
+  } else if (type === 'hex32') {
+    const h = raw.replace(/^0x/i,'').replace(/\s/g,'');
+    if (!/^[0-9a-fA-F]{1,8}$/.test(h)) { showError(); return; }
+    view.setUint32(0, parseInt(h.padStart(8,'0'), 16), false);
+    val = view.getFloat32(0, false);
+  } else {
+    const h = raw.replace(/^0x/i,'').replace(/\s/g,'');
+    if (!/^[0-9a-fA-F]{1,16}$/.test(h)) { showError(); return; }
+    const lo = parseInt(h.slice(-8).padStart(8,'0'), 16);
+    const hi = parseInt(h.slice(0,-8).padStart(8,'0') || '0', 16);
+    view.setUint32(0, hi, false);
+    view.setUint32(4, lo, false);
+    val = view.getFloat64(0, false);
+  }
+
+  show32(val);
+  show64(val);
+}
+
+function getFloat32Bits(v) {
+  view.setFloat32(0, v, false);
+  return view.getUint32(0, false);
+}
+
+function getFloat64Bits(v) {
+  view.setFloat64(0, v, false);
+  const hi = view.getUint32(0, false);
+  const lo = view.getUint32(4, false);
+  return [hi, lo];
+}
+
+function toBin(n, bits) {
+  return n.toString(2).padStart(bits, '0');
+}
+
+function renderBits(containerId, bits, signCount, expCount, mantCount) {
+  const container = document.getElementById(containerId);
+  let html = '';
+  for (let i = 0; i < bits.length; i++) {
+    let cls;
+    if (i < signCount) cls = 'bit-sign';
+    else if (i < signCount + expCount) cls = 'bit-exp32';
+    else cls = 'bit-mant';
+    html += `<span class="bit-cell ${cls}" title="bit[${bits.length-1-i}]">${bits[i]}</span>`;
+    if (i === signCount-1 || i === signCount+expCount-1) html += '<span class="bit-sep"></span>';
+  }
+  container.innerHTML = html;
+}
+
+function classifySpecial32(sign, expRaw, mantRaw) {
+  if (expRaw === 255) {
+    if (mantRaw === 0) return sign ? '-Infinity' : '+Infinity';
+    return 'NaN';
+  }
+  if (expRaw === 0 && mantRaw !== 0) return '非正規化数';
+  if (expRaw === 0 && mantRaw === 0) return sign ? '-0' : '+0';
+  return null;
+}
+
+function classifySpecial64(sign, expRaw, mantHi, mantLo) {
+  if (expRaw === 2047) {
+    if (mantHi === 0 && mantLo === 0) return sign ? '-Infinity' : '+Infinity';
+    return 'NaN';
+  }
+  if (expRaw === 0 && mantHi === 0 && mantLo === 0) return sign ? '-0' : '+0';
+  if (expRaw === 0) return '非正規化数';
+  return null;
+}
+
+function show32(val) {
+  const bits32 = getFloat32Bits(val);
+  const binStr = toBin(bits32, 32);
+  const sign = (bits32 >>> 31) & 1;
+  const expRaw = (bits32 >>> 23) & 0xFF;
+  const mant = bits32 & 0x7FFFFF;
+
+  renderBits('bits32', binStr, 1, 8, 23);
+
+  document.getElementById('sign32').textContent = sign;
+  document.getElementById('signMeaning32').textContent = sign ? '負 (-)' : '正 (+)';
+
+  const expBin = toBin(expRaw, 8);
+  document.getElementById('exp32').textContent = expBin;
+  const bias = 127;
+  const realExp = expRaw - bias;
+  document.getElementById('expVal32').textContent = `生値:${expRaw} バイアス:${bias} 真の指数:${realExp}`;
+
+  const mantBin = toBin(mant, 23);
+  document.getElementById('mant32').textContent = mantBin;
+  const mantFrac = mant / Math.pow(2, 23);
+  document.getElementById('mantVal32').textContent = `仮数値: 1.${mantBin.slice(0,8)}... ≈ ${(1+mantFrac).toFixed(6)}`;
+
+  const hexVal = bits32.toString(16).padStart(8,'0').toUpperCase();
+  document.getElementById('hex32').textContent = '0x' + hexVal;
+
+  const decoded = (() => { view.setUint32(0, bits32, false); return view.getFloat32(0, false); })();
+  document.getElementById('dec32').textContent = decoded.toPrecision(7);
+
+  const special = classifySpecial32(sign, expRaw, mant);
+  const sp32 = document.getElementById('special32');
+  if (special) {
+    sp32.textContent = special;
+    sp32.className = 'text-xs font-bold px-2 py-0.5 rounded bg-orange-900 text-orange-300';
+    sp32.classList.remove('hidden');
+  } else {
+    sp32.classList.add('hidden');
+  }
+}
+
+function show64(val) {
+  const [hi, lo] = getFloat64Bits(val);
+  const binHi = toBin(hi, 32);
+  const binLo = toBin(lo, 32);
+  const binStr = binHi + binLo;
+
+  const sign = (hi >>> 31) & 1;
+  const expRaw = ((hi >>> 20) & 0x7FF);
+  const mantHi = hi & 0xFFFFF;
+  const mantLo = lo;
+
+  renderBits('bits64', binStr, 1, 11, 52);
+
+  document.getElementById('sign64').textContent = sign;
+  document.getElementById('signMeaning64').textContent = sign ? '負 (-)' : '正 (+)';
+
+  const expBin = toBin(expRaw, 11);
+  document.getElementById('exp64').textContent = expBin;
+  const bias = 1023;
+  const realExp = expRaw - bias;
+  document.getElementById('expVal64').textContent = `生値:${expRaw} バイアス:${bias} 真の指数:${realExp}`;
+
+  const mantBin = toBin(mantHi, 20) + toBin(mantLo, 32);
+  document.getElementById('mant64').textContent = mantBin.slice(0,26) + '\n' + mantBin.slice(26);
+  document.getElementById('mantVal64').textContent = `仮数部52bit (1.f 形式)`;
+
+  const hexHi = hi.toString(16).padStart(8,'0').toUpperCase();
+  const hexLo = lo.toString(16).padStart(8,'0').toUpperCase();
+  document.getElementById('hex64').textContent = '0x' + hexHi + hexLo;
+  document.getElementById('dec64').textContent = isNaN(val) ? 'NaN' : !isFinite(val) ? val.toString() : val.toPrecision(17);
+
+  const special = classifySpecial64(sign, expRaw, mantHi, mantLo);
+  const sp64 = document.getElementById('special64');
+  if (special) {
+    sp64.textContent = special;
+    sp64.className = 'text-xs font-bold px-2 py-0.5 rounded bg-blue-900 text-blue-300';
+    sp64.classList.remove('hidden');
+  } else {
+    sp64.classList.add('hidden');
+  }
+}
+
+function showError() {
+  ['bits32','bits64'].forEach(id => { document.getElementById(id).innerHTML = '<span class="text-red-400 text-sm">入力エラー</span>'; });
+}
+
+document.getElementById('mainInput').addEventListener('input', convert);
+document.querySelectorAll('input[name="inputType"]').forEach(r => r.addEventListener('change', convert));
+
+setVal('3.14');
+</script>
+</body>
+</html>
